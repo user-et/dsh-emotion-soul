@@ -1,120 +1,101 @@
 # dsh-emotion-soul
 
-> 一个面向 DeepSeek Harness（DSH）的实验性 Cordis 插件：为 Agent 提供进程内的情绪状态、`check_emotion` 工具和角色提示词。
+为 DeepSeek Harness（DSH）提供角色人设、进程内情绪状态和 `check_emotion` 工具的实验性 Cordis 插件。当前版本面向 DSH `0.2.2-rc.1`。
 
-**当前状态：原型 / 开发中。** 目前实现的是单进程内存状态与静态 `soul.json` 人设配置；还没有记忆库、反思归纳或形象界面。已验证预构建 tarball 能在隔离 DSH profile 启动；从 GitHub 源码安装仍需单独验证构建脚本授权，发布前请阅读[发布前检查](#发布前检查)。
+## 功能
 
-## 能力与边界
+- 从 `soul.json` 读取人设，并将其写入 Agent 的系统提示词。
+- 维护精力和心情：收到用户消息时精力下降、心情小幅随机变化；一段时间无交互后逐渐恢复。
+- 注册 `check_emotion` 工具，返回当前精力和心情数值。
 
-| 构想 | 当前状态 | 说明 |
+状态仅保存在当前进程内，重启后重置；没有跨会话记忆、RAG 或形象界面。插件的提示词只在存在 Agent 上下文时注入。
+
+## 设计构想
+
+本项目提出一个用于指导实现与扩展的六层 Agent 架构构想。它是工程设计地图，不是心理学或认知科学中公认的完整人格模型；各层职责可以交互、重叠，具体边界会随实现演进。以下内容是长期设想，未标明已实现的部分都还在规划中：
+
+| 部分 | 目标与职责 | 当前状态 |
 |---|---|---|
-| 以太体：情绪状态 | 已实现原型 | 维护精力、心情和基准心情；用户消息会影响进程内状态。 |
-| 情绪工具 | 已实现原型 | 注册 `check_emotion`，返回当前精力与心情数值。 |
-| 灵性体：角色人设 | 已实现原型 | 从 `src/soul.json` 读取名字、人设和基准心情，并注入 system prompt。 |
-| 心智体：反思归纳 | 未实现 | README 中的未来构想，不代表当前已有对应插件或存储能力。 |
-| 记忆库 / RAG | 未实现 | 当前没有跨会话记忆、检索或持久化。 |
-| 肉身体：形象界面 | 未实现 | 当前没有 Live2D、头像或其他视觉界面集成。 |
+| **以太体：动态状态** | 表示精力、心情、动机等短期状态，并参与调节回复。 | 已有进程内情绪原型；重启后重置。 |
+| **星光体：能力与行动扩展** | 通过插件接入外部平台或工具（例如 QQ、微信等渠道），并扩展专门能力、工作流程与可复用技能。长期使用中经验证、整理并固化的技能，也可作为能力模块提供；这不意味着插件会自动从交互中学习或自我修改。 | 当前插件项目本身是 Cordis 插件，但星光体的统一能力/技能体系尚未实现。 |
+| **灵性体：身份与表达** | 定义角色身份、性格、价值取向和表达方式，并影响系统提示词。 | 已实现静态 JSON 人设和提示词注入。 |
+| **心智体：反思与自我调节** | 根据经历评估行为与策略，归纳认知、形成目标，并在受控规则下调整后续行为。 | 规划中，尚未实现。 |
+| **记忆体：持久信息与检索** | 管理跨会话记忆，并按需检索相关上下文（可包含 RAG）。 | 规划中，尚未实现。 |
+| **肉身体：感知与呈现** | 承接外界输入和行动输出，包括聊天界面、头像、Live2D 或其他交互载体。 | 规划中，尚未实现。 |
 
-情绪值只保存在当前 Node 进程中；重启会恢复初始值。此原型不应被理解为真实心理状态或持久化记忆。
+可以把整体运行过程想象为：**接收输入 → 检索相关记忆与状态 → 由星光体能力处理或规划 → 灵性体、以太体及安全约束共同调节 → 经肉身体输出或行动 → 心智体反思，并在需要时更新记忆**。这是便于讨论的逻辑流程，不要求所有实现都采用严格串行或互不重叠的模块。
 
-## 项目结构与 DSH 如何加载
+## 项目结构
 
 ```text
 dsh-emotion-soul/
-├── package.json          # 包元数据；dsh.bundle.patch 指向 bundle patch
-├── cordis.patch.yml      # 向 profile 插入插件行
+├── cordis.patch.yml       # DSH bundle patch：把插件加入 profile
+├── package.json           # 包入口、依赖、构建命令和 DSH bundle 元数据
+├── pnpm-lock.yaml         # 锁定依赖版本
+├── tsconfig.json          # TypeScript 构建配置，输出到 dist/
+├── scripts/
+│   └── copy-assets.mjs    # 将人设 JSON 复制到构建目录
 ├── src/
-│   ├── emotion-soul.ts   # Cordis 插件实现：name / inject / apply
-│   └── soul.json         # 默认角色配置
-└── README.md
+│   ├── emotion-soul.ts    # 插件实现：状态、工具、事件和提示词注入
+│   └── soul.json          # 默认人设及基准心情
+├── dist/                  # 已提交的预构建 JS、类型声明和 soul.json
+├── LICENSE                # MIT 许可证
+└── README.md              # 功能、构想、安装和开发说明
 ```
 
-加载链路是：**profile 的 bundle 列表 → `package.json` 的 `dsh.bundle.patch` → `cordis.patch.yml` 中的插件行 → 插件模块的 `apply(ctx, config)`**。
+## 安装
 
-- `pnpm` 根据 `package.json` 安装依赖；本地目录安装可以保留 `link:`，指回开发 checkout。
-- DSH 不会把 `package.json` 的 `main` 当成“启动这个插件”的命令。对于 bundle，DSH 根据 `dsh.bundle.patch` 找到配置层；Loader 再根据 patch 行的 `name` 导入具体模块。
-- 插件 `name`、`inject`、`apply` 是 Cordis 插件约定；`inject` 声明它依赖的服务，`apply` 注册工具、提示词和事件处理。
-- `--patch` 接受的是一个 patch 文件，不是源码路径。它适合临时试验；可安装项目应由包自己的 bundle patch 引用插件入口。
+需要已安装并可运行的 DSH CLI。将示例中的 `web` 换成你实际使用的 profile 名称。
 
-## 本地开发
-
-先准备可运行的 DSH CLI，并在本项目根目录执行：
+**从 GitHub 安装预构建版本**（仓库已跟踪 `dist/`，当前安装不需要临时编译）：
 
 ```sh
-dsh plugin --profile web add .
+dsh plugin --profile web add github:user-et/dsh-emotion-soul
 ```
 
-这会把当前 checkout 作为本地包安装到 `web` profile；依赖中看到 `link:` 指回项目目录是正常的，方便开发时直接改源码。它不是把源码复制进 `.dsh/profiles/web`。
+如需固定版本，可在仓库地址后追加 `#提交哈希`。
 
-验证 DSH 是否将此包识别为 bundle：
+**从下载好的 `.tgz` 安装**：
 
 ```sh
-dsh --profile web --dump-config
+dsh plugin --profile web add "/path/to/dsh-emotion-soul-0.1.0.tgz"
 ```
 
-在输出中检查 `dsh-emotion-soul` 提供的 patch 层和 `emotion-soul` 行。添加或移除 bundle 后，重启正在运行的 profile；bundle 集合在 profile 启动时确定。
+Windows PowerShell 请把示例路径换成实际绝对路径，例如 `E:\downloads\dsh-emotion-soul-0.1.0.tgz`。`.tgz` 必须先下载到本地；仓库地址不会自动指向仓库中的压缩包。两种安装方式选一种即可。
 
-> 当前源码入口是 TypeScript。DSH 源码开发环境通常使用 `tsx/esm`，但已安装的 DSH CLI 不应被假定为能直接运行任意外部 `.ts` 文件。独立项目需要自己的构建产物和依赖声明，见下方发布前检查。
-
-## 发布前检查
-
-**已完成本地 tarball 的最小验证；尚未发布到 GitHub。**
-
-- [x] `pnpm run build` 生成 `dist/` 下的 JS、声明文件和 `soul.json`；入口、`files` 和 bundle patch 已对应，`pnpm pack` 生成包含这些文件的 tarball。
-- [x] `@deepseek-ai/dsh-tools` 是运行依赖（固定 `0.2.2-rc.1`），`@deepseek-ai/cordis` 是宿主 peer 和本地开发依赖；`engines.dsh` 目前限定 `0.2.2-rc.1`。
-- [x] tarball 已在隔离 DSH profile 安装；`--dump-config` 显示 `emotion-soul`，实际启动日志显示载入 `soul.json` 和插件。独立安装目录也验证包入口和 JSON 可读取。
-- [x] 原生定时器在插件 disposer 中清理，提示词 section disposer 也会调用；`.gitignore` 排除新旧构建产物、测试目录、tarball 和依赖。`pnpm pack` 已验证会触发 `prepare` 构建。
-- [ ] 尚未实测 `check_emotion` 工具调用、提示词注入效果与热重载后的卸载清理；启动日志不能代替这些功能测试。
-- [ ] 尚未验证 GitHub 源码安装的 `prepare` 执行与 pnpm 构建脚本授权；建立 GitHub 仓库后补上准确的 `repository` 字段并验证安装。
-
-下方 GitHub 命令是后续发布操作，不代表仓库已经公开。
-
-## 发布到 GitHub
-
-### 1. 建立 GitHub 仓库
-
-在 GitHub 创建空仓库，例如 `OWNER/dsh-emotion-soul`，在本地项目根目录初始化并推送：
-
-```sh
-git init
-git add .
-git status --short
-git commit -m "Initial dsh-emotion-soul plugin"
-git branch -M main
-git remote add origin https://github.com/OWNER/dsh-emotion-soul.git
-git push -u origin main
-```
-
-先确认 GitHub 仓库中有 `README.md`、许可证和所需源码/构建配置，不要提交 `node_modules/`、密钥或本地 DSH profile。
-
-### 2. 给可复现版本打标签
-
-完成构建和干净安装验证后，再提交最终变更并创建版本标签：
-
-```sh
-git add .
-git commit -m "Prepare v0.1.0 release"
-git tag v0.1.0
-git push origin main --tags
-```
-
-### 3. 从 GitHub 安装到 DSH
-
-GitHub 源码安装的构建行为需要特别留意：pnpm 不会无条件替仓库构建，且 pnpm 10 对 Git 依赖的构建脚本要求明确授权。插件包需要正确的 `prepare`/构建配置；用户也必须审查并授权可信包的安装构建。构建与授权准备就绪后，可以固定到不可变提交来安装：
-
-```sh
-dsh plugin --profile web add github:OWNER/dsh-emotion-soul#COMMIT_SHA
-```
-
-不要在生产环境中盲目跟随可变的 `main` 分支。安装后检查组合配置，并重启 profile：
+安装后重启正在运行的 profile；可检查组合配置和启动日志：
 
 ```sh
 dsh --profile web --dump-config
 dsh --profile web
 ```
 
-若暂时不打算处理 Git 安装构建授权，可优先发布到 npm 等注册表并分发已构建文件，或用经过验证的预构建 tarball；无论选择哪种方式，都要确保发布物包含 patch、运行时入口和 `soul.json`。
+在配置中应看到 `dsh-emotion-soul` / `emotion-soul`；启动日志应显示 `soul.json` 已加载。如果安装命令提示插件已存在，先确认当前安装来源，不要直接删除整个 profile。
+
+## 使用
+
+启动 profile 后，插件会在 Agent 的系统提示词中加入人设；正常对话时用户消息会影响情绪状态。想查看数值时，可请 Agent 调用 `check_emotion`，其返回格式类似 `精力：80/100，心情：65/100`。工具是否在某次对话中被调用，仍取决于 Agent 的工具选择；查看数值时可明确提出调用工具。
+
+## 自定义
+
+在**项目源码**中修改 `src/soul.json`：
+
+| 字段 | 作用 |
+|---|---|
+| `name` | 角色名称，目前用于加载日志，不会自动加入提示词。 |
+| `persona` | 注入 Agent 系统提示词的人设描述；可直接改写语气和行为习惯。 |
+| `baselineMood` | 基准心情值，加载配置时设置当前心情；建议使用 0–100 的数字。 |
+
+`energy` 初值（80）、心情变化、恢复速度和语气阈值目前写在 `src/emotion-soul.ts` 中，不是 `soul.json` 配置项。若要改变这些规则，需要修改源码。更改源码或人设后重新构建，再更新你的安装来源并重启 profile：
+
+```sh
+pnpm install
+pnpm run build
+pnpm pack
+```
+
+`build` 会把 JS、类型声明和 `soul.json` 写入 `dist/`；`pack` 会生成新的 `.tgz`。若采用 GitHub 安装，需将更新后的 `dist/` 与源码一同提交并推送；只修改本地文件不会更新其他用户安装的版本。
 
 ## 许可证
 
-本项目采用 MIT License，完整条款见 [`LICENSE`](./LICENSE)。`package.json` 中的 `license` 字段是机器可读的许可证标识，不能代替该许可证全文。
+MIT License，见 [LICENSE](./LICENSE)。
