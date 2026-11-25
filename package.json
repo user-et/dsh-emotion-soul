@@ -1,0 +1,46 @@
+{
+  "name": "dsh-emotion-soul",
+  "version": "0.1.0",
+  "description": "情感插件",
+  "author": "user-et",
+  "type": "module",
+  "main": "./dist/emotion-soul.js",
+  "types": "./dist/emotion-soul.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/emotion-soul.d.ts",
+      "import": "./dist/emotion-soul.js",
+      "default": "./dist/emotion-soul.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "prepare": "pnpm run build"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@types/node": "^22.20.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "dsh": "0.2.2-rc.1"
+  },
+  "license": "MIT",
+  "dsh": { 
+    "bundle": { 
+      "patch": "./cordis.patch.yml" 
+      } 
+    }
+}
