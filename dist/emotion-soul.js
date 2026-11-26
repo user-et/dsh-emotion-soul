@@ -87,6 +87,7 @@ export function apply(ctx) {
     });
     // 定时衰减
     const decayTimer = setInterval(decayEmotion, 60 * 1000);
+    decayTimer.unref?.();
     console.log('[emotion-soul] 插件已加载，灵性体：', soul.name);
     return () => {
         clearInterval(decayTimer);
