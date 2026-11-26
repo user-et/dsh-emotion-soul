@@ -1,6 +1,6 @@
 # dsh-emotion-soul
 
-为 DeepSeek Harness（DSH）提供角色人设、进程内情绪状态和 `check_emotion` 工具的实验性 Cordis 插件。当前版本面向 DSH `0.2.2-rc.1`。
+为 DeepSeek Harness（DSH）提供角色人设、进程内情绪状态和 `check_emotion` 工具的实验性 Cordis 插件。当前声明兼容 DSH `0.2.1-rc.3` 起至 `0.2.3` 之前的版本；旧版本兼容性尚未覆盖完整测试。
 
 ## 功能
 
